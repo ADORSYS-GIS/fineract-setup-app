@@ -2,16 +2,20 @@ package com.example.fineractsetup.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.core.io.Resource;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.Collections;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
- * Service for managing template files and their endpoints
+ * Service for managing and processing template files
  */
 @Service
 public class TemplateService {
@@ -19,96 +23,117 @@ public class TemplateService {
     
     private final FileService fileService;
     private final FineractApiService fineractApiService;
+    private final PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
     
-    // Map of template files to their corresponding API endpoints
-    private static final Map<String, String> TEMPLATE_TO_ENDPOINT;
-    
-    static {
-        Map<String, String> map = new HashMap<>();
-        map.put("data/ChartOfAccount.xls", "glaccounts/uploadtemplate");
-        map.put("data/Offices.xls", "offices/uploadtemplate");
-        map.put("data/Staff.xls", "staff/uploadtemplate");
-        map.put("data/Users.xls", "users/uploadtemplate");
-        map.put("data/Clients.xls", "clients/uploadtemplate");
-        map.put("data/SavingsProducts.xls", "savingsaccounts/uploadtemplate");
-        map.put("data/LoanProducts.xls", "loans/uploadtemplate");
-        map.put("data/SavingsTransactions.xls", "savingsaccounts/transactions/uploadtemplate");
-        map.put("data/LoanRepayments.xls", "loans/repayments/uploadtemplate");
-        TEMPLATE_TO_ENDPOINT = Collections.unmodifiableMap(map);
-    }
+    // Map of template paths to their corresponding API endpoints
+    private final Map<String, String> templateEndpoints = new HashMap<>();
     
     public TemplateService(FileService fileService, FineractApiService fineractApiService) {
         this.fileService = fileService;
         this.fineractApiService = fineractApiService;
+        
+        // Initialize template endpoints mapping
+        initializeTemplateEndpoints();
     }
     
     /**
-     * Gets all template paths
-     * 
-     * @return array of template paths
+     * Initialize the mapping of template paths to API endpoints
      */
-    public String[] getAllTemplatePaths() {
-        return TEMPLATE_TO_ENDPOINT.keySet().toArray(new String[0]);
+    private void initializeTemplateEndpoints() {
+        // Direct upload templates
+        templateEndpoints.put("data/Offices.xls", "offices/uploadtemplate");
+        templateEndpoints.put("data/Staffs.xls", "staff/uploadtemplate");
+        templateEndpoints.put("data/Users.xls", "users/uploadtemplate");
+        templateEndpoints.put("data/ChartOfAccounts.xls", "glaccounts/uploadtemplate");
+        templateEndpoints.put("data/SavingsAccount.xls", "savingsaccounts/uploadtemplate");
+        
+        // Template endpoints for workbook-based templates
+        // These are processed by WorkbookService, but we keep them here for reference
+        // and to ensure they're included in getAllTemplatePaths()
+        templateEndpoints.put("data/workbook-templates/Clients.xls", "clients");
+        templateEndpoints.put("data/workbook-templates/SavingsProduct.xls", "savingsproducts");
+        templateEndpoints.put("data/workbook-templates/Teller.xls", "tellers");
+        templateEndpoints.put("data/workbook-templates/Roles.xls", "roles");
+        templateEndpoints.put("data/workbook-templates/Currencies.xls", "currencies");
+        templateEndpoints.put("data/workbook-templates/PaymentType.xls", "paymenttypes");
+
     }
     
     /**
-     * Gets the API endpoint for a template
+     * Gets all template paths that should be processed
      * 
-     * @param templatePath the path to the template
-     * @return the API endpoint
+     * @return a list of template paths
      */
-    public String getEndpointForTemplate(String templatePath) {
-        return TEMPLATE_TO_ENDPOINT.get(templatePath);
+    public List<String> getAllTemplatePaths() {
+        List<String> paths = new ArrayList<>();
+        
+        // Add all templates from the map
+        paths.addAll(templateEndpoints.keySet());
+        
+        // Discover additional templates
+        try {
+            Resource[] directTemplates = resolver.getResources("classpath*:data/*.xls");
+            for (Resource resource : directTemplates) {
+                String path = "data/" + resource.getFilename();
+                if (!paths.contains(path)) {
+                    paths.add(path);
+                }
+            }
+        } catch (IOException e) {
+            logger.warn("Error discovering direct templates: {}", e.getMessage());
+        }
+        
+        return paths;
     }
     
     /**
-     * Processes a template file and uploads it to the Fineract API
+     * Processes a template file by uploading it to the appropriate API endpoint
      * 
      * @param templatePath the path to the template file
-     * @return true if the upload was successful, false otherwise
+     * @return true if the template was processed successfully, false otherwise
      */
     public boolean processTemplate(String templatePath) {
         logger.info("Processing template: {}", templatePath);
         
-        String endpoint = getEndpointForTemplate(templatePath);
+        // Get the API endpoint for this template
+        String endpoint = templateEndpoints.get(templatePath);
         if (endpoint == null) {
-            logger.error("No endpoint found for template: {}", templatePath);
+            logger.warn("No endpoint configured for template: {}", templatePath);
             return false;
         }
         
+        // Skip workbook-based templates - they are handled by WorkbookService
+        if (templatePath.contains("workbook-templates/")) {
+            logger.info("Skipping workbook-based template: {} - handled by WorkbookService", templatePath);
+            return true;
+        }
+        
         try {
-            // Get the template file from the classpath
+            // Get the template file as an input stream
             InputStream inputStream = fileService.getTemplateInputStream(templatePath);
-            if (inputStream == null) {
-                logger.warn("Template file not found: {}", templatePath);
-                return false;
-            }
             
             // Validate the Excel file
             if (!fileService.validateExcelFile(inputStream)) {
-                logger.error("Template file validation failed: {}", templatePath);
+                logger.error("Template validation failed: {}", templatePath);
                 return false;
             }
             
-            // Get a fresh input stream for format conversion
-            // Our new FileService implementation handles stream closure properly
-            InputStream formatStream = fileService.getTemplateInputStream(templatePath);
+            // Get a fresh input stream (since validation consumes the stream)
+            inputStream = fileService.getTemplateInputStream(templatePath);
             
             // Ensure the file is in XLS format
-            byte[] fileBytes = fileService.ensureXlsFormat(formatStream);
+            byte[] xlsBytes = fileService.ensureXlsFormat(inputStream);
             
-            // Upload the file to the Fineract API
-            boolean success = fineractApiService.uploadTemplate(fileBytes, endpoint, templatePath);
+            // Extract the filename from the path
+            String fileName = templatePath.substring(templatePath.lastIndexOf('/') + 1);
             
-            if (success) {
-                logger.info("Successfully processed template: {}", templatePath);
-            } else {
-                logger.error("Failed to process template: {}", templatePath);
-            }
+            // For direct upload templates, we use the uploadtemplate endpoint
+            logger.info("Using direct upload approach for endpoint: {}", endpoint);
             
-            return success;
-        } catch (IOException e) {
-            logger.error("Error processing template: {}", templatePath, e);
+            // Upload the template to the API
+            return fineractApiService.uploadTemplate(xlsBytes, endpoint, fileName);
+        } catch (Exception e) {
+            logger.error("Error processing template {}: {}", templatePath, e.getMessage(), e);
             return false;
         }
     }

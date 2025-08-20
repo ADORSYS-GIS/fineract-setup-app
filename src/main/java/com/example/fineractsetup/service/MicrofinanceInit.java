@@ -19,10 +19,12 @@ public class MicrofinanceInit implements CommandLineRunner {
     private static final Logger logger = LoggerFactory.getLogger(MicrofinanceInit.class);
     
     private final TemplateService templateService;
+    private final WorkbookService workbookService;
     private final ApplicationContext context;
     
-    public MicrofinanceInit(TemplateService templateService, ApplicationContext context) {
+    public MicrofinanceInit(TemplateService templateService, WorkbookService workbookService, ApplicationContext context) {
         this.templateService = templateService;
+        this.workbookService = workbookService;
         this.context = context;
     }
     
@@ -33,6 +35,14 @@ public class MicrofinanceInit implements CommandLineRunner {
         int successCount = 0;
         int failureCount = 0;
         
+        // 1) Process JSON-based workbook configurations first (currencies, payment types, roles, savings products)
+        try {
+            logger.info("Processing workbook-based configurations (JSON endpoints)...");
+            workbookService.processWorkbookTemplates();
+        } catch (Exception e) {
+            logger.error("Error during workbook configuration processing", e);
+        }
+
         // Process all templates
         for (String templatePath : templateService.getAllTemplatePaths()) {
             try {
