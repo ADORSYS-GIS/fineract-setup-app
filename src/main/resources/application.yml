@@ -9,7 +9,7 @@ fineract:
     dateFormat: dd MMMM yyyy
 
 keycloak:
-  url: http://localhost:9000/realms/fineract/protocol/openid-connect/token
+  url: http://172.17.0.1:9000/realms/fineract/protocol/openid-connect/token
   grant-type: password
   client-id: community-app
   client-secret: "**********"
