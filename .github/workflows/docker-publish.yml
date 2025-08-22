@@ -3,7 +3,7 @@ name: Build and Push Docker Image
 on:
   workflow_dispatch:  # Manual trigger
   push:
-    branches: [ main ]
+    branches: [ test ]
 
 env:
   REGISTRY: ghcr.io
@@ -25,7 +25,7 @@ jobs:
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ secrets.SETUPAPP_PAT }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v4
