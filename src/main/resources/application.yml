@@ -1,6 +1,6 @@
 fineract:
   api:
-    url: https://localhost/fineract-provider/api/v1
+    url: ${FINERACT_API_URL:https://localhost/fineract-provider/api/v1}
     tenant: default
     username: mifos
     password: password
@@ -9,10 +9,10 @@ fineract:
     dateFormat: dd MMMM yyyy
 
 keycloak:
-  url: http://172.17.0.1:9000/realms/fineract/protocol/openid-connect/token
+  url: ${KEYCLOAK_AUTH_URL:http://172.17.0.1:9000/realms/fineract/protocol/openid-connect/token}
   grant-type: password
   client-id: setup-app-client
-  client-secret: '**********'
+  client-secret: ${KEYCLOAK_CLIENT_SECRET:**********}
 
 # RestTemplate configuration
 rest:
