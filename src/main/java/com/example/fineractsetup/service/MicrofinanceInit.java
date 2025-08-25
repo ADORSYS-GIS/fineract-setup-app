@@ -43,14 +43,14 @@ public class MicrofinanceInit implements CommandLineRunner {
                     logger.info("Processing bulk import template: {}", templatePath);
                     boolean success = templateService.processTemplate(templatePath);
                     if (success) {
-                        logger.info("✅ Successfully processed bulk import template: {}", templatePath);
+                        logger.info(" Successfully processed bulk import template: {}", templatePath);
                         successCount++;
                     } else {
-                        logger.error("❌ Failed to process bulk import template: {}", templatePath);
+                        logger.error(" Failed to process bulk import template: {}", templatePath);
                         failureCount++;
                     }
                 } catch (Exception e) {
-                    logger.error("❌ Error processing bulk import template: {} - {}", templatePath, e.getMessage(), e);
+                    logger.error(" Error processing bulk import template: {} - {}", templatePath, e.getMessage(), e);
                     failureCount++;
                 }
             }
