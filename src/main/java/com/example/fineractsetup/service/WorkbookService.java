@@ -501,42 +501,157 @@ public class WorkbookService {
             Row row = sheet.getRow(r);
             if (row == null) continue;
 
-            String name = headerMap.isEmpty() ? asString(row.getCell(0)) : readStringCell(row, headerMap, Collections.singletonList("name"));
+            // Get teller name from "tellername" column or fallback to "name"
+            String name = headerMap.isEmpty() ? asString(row.getCell(0)) : 
+                readStringCell(row, headerMap, Arrays.asList("tellername", "name", "teller"));
             if (name == null || name.trim().isEmpty()) continue;
 
-            Map<String, Object> payload = headerMap.isEmpty() ? new LinkedHashMap<>() : toMapFromRow(row, headerMap);
+            Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("name", name.trim());
 
-            // Normalize fields to match example payload from UI
-            // officeId required
-            String officeIdStr = headerMap.isEmpty() ? asString(row.getCell(1)) : readStringCell(row, headerMap, Arrays.asList("officeId", "office"));
+            // Read officeId directly from the template
+            String officeIdStr = headerMap.isEmpty() ? asString(row.getCell(1)) : 
+                readStringCell(row, headerMap, Arrays.asList("office", "officeId", "officeid"));
             if (officeIdStr != null && !officeIdStr.trim().isEmpty()) {
-                try { payload.put("officeId", Integer.parseInt(officeIdStr.trim())); } catch (NumberFormatException ignore) {}
+                try { 
+                    payload.put("officeId", Integer.parseInt(officeIdStr.trim())); 
+                } catch (NumberFormatException ignore) {
+                    // If it's not a number, log a warning
+                    logger.warn("Invalid officeId '{}' for teller '{}', must be a number", officeIdStr.trim(), name.trim());
+                }
             }
+            
             // description optional
-            String description = headerMap.isEmpty() ? asString(row.getCell(2)) : readStringCell(row, headerMap, Arrays.asList("description", "desc"));
-            if (description != null) payload.put("description", description);
-            // startDate optional (string per dateFormat)
-            String startDate = headerMap.isEmpty() ? asString(row.getCell(3)) : readStringCell(row, headerMap, Arrays.asList("startDate", "start"));
-            if (startDate != null) payload.put("startDate", startDate);
-            // endDate optional
-            String endDate = headerMap.isEmpty() ? asString(row.getCell(4)) : readStringCell(row, headerMap, Arrays.asList("endDate", "end"));
-            if (endDate != null) payload.put("endDate", endDate);
-            // status optional
-            String statusStr = headerMap.isEmpty() ? asString(row.getCell(5)) : readStringCell(row, headerMap, Arrays.asList("status"));
-            if (statusStr != null && !statusStr.trim().isEmpty()) {
-                try { payload.put("status", Integer.parseInt(statusStr.trim())); } catch (NumberFormatException ignore) {}
+            String description = headerMap.isEmpty() ? asString(row.getCell(2)) : 
+                readStringCell(row, headerMap, Arrays.asList("description", "desc"));
+            if (description != null && !description.trim().isEmpty()) {
+                payload.put("description", description.trim());
             }
+            
+            // startDate required - read directly from the template
+            Cell startDateCell = headerMap.isEmpty() ? row.getCell(3) : 
+                row.getCell(headerMap.getOrDefault("startedon", 
+                    headerMap.getOrDefault("startdate", 
+                        headerMap.getOrDefault("start", 3))));
+            
+            if (startDateCell != null) {
+                try {
+                    // Check if it's a date cell
+                    if (startDateCell.getCellType() == CellType.NUMERIC && DateUtil.isCellDateFormatted(startDateCell)) {
+                        // Get the date value
+                        Date date = startDateCell.getDateCellValue();
+                        // Format it as "dd MMMM yyyy"
+                        Calendar cal = Calendar.getInstance();
+                        cal.setTime(date);
+                        int day = cal.get(Calendar.DAY_OF_MONTH);
+                        int month = cal.get(Calendar.MONTH);
+                        int year = cal.get(Calendar.YEAR);
+                        
+                        String[] months = {"January", "February", "March", "April", "May", "June", 
+                                          "July", "August", "September", "October", "November", "December"};
+                        String formattedDate = day + " " + months[month] + " " + year;
+                        payload.put("startDate", formattedDate);
+                        logger.info("Converted startDate to '{}'", formattedDate);
+                    } else {
+                        // Try to parse as string
+                        String startDate = asString(startDateCell);
+                        if (startDate != null && !startDate.trim().isEmpty()) {
+                            // Parse the date format from the template (e.g., 08/22/25)
+                            // Check if it's in MM/dd/yy format
+                            if (startDate.matches("\\d{2}/\\d{2}/\\d{2}")) {
+                                String[] parts = startDate.split("/");
+                                int month = Integer.parseInt(parts[0]);
+                                int day = Integer.parseInt(parts[1]);
+                                int year = Integer.parseInt(parts[2]) + 2000; // Assuming 20xx
+                                
+                                // Convert to "dd MMMM yyyy" format
+                                String[] months = {"January", "February", "March", "April", "May", "June", 
+                                                  "July", "August", "September", "October", "November", "December"};
+                                String formattedDate = day + " " + months[month-1] + " " + year;
+                                payload.put("startDate", formattedDate);
+                                logger.info("Converted startDate from '{}' to '{}'", startDate.trim(), formattedDate);
+                            } else {
+                                // Use as is, assuming it's already in the correct format
+                                payload.put("startDate", startDate.trim());
+                            }
+                        }
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to parse startDate for teller '{}': {}", name.trim(), e.getMessage());
+                }
+            }
+            
+            // endDate optional
+            String endDate = headerMap.isEmpty() ? asString(row.getCell(4)) : 
+                readStringCell(row, headerMap, Arrays.asList("enddate", "endDate", "end"));
+            if (endDate != null && !endDate.trim().isEmpty()) {
+                // Use the same date parsing logic as startDate
+                try {
+                    // Check if it's in MM/dd/yy format
+                    if (endDate.matches("\\d{2}/\\d{2}/\\d{2}")) {
+                        String[] parts = endDate.split("/");
+                        int month = Integer.parseInt(parts[0]);
+                        int day = Integer.parseInt(parts[1]);
+                        int year = Integer.parseInt(parts[2]) + 2000; // Assuming 20xx
+                        
+                        // Convert to "dd MMMM yyyy" format
+                        String[] months = {"January", "February", "March", "April", "May", "June", 
+                                          "July", "August", "September", "October", "November", "December"};
+                        String formattedDate = day + " " + months[month-1] + " " + year;
+                        payload.put("endDate", formattedDate);
+                        logger.info("Converted endDate from '{}' to '{}'", endDate.trim(), formattedDate);
+                    } else {
+                        // Use as is, assuming it's already in the correct format
+                        payload.put("endDate", endDate.trim());
+                    }
+                } catch (Exception e) {
+                    logger.warn("Failed to parse endDate '{}' for teller '{}': {}", endDate.trim(), name.trim(), e.getMessage());
+                }
+            }
+            
+            // status required - read directly from the template
+            String statusStr = headerMap.isEmpty() ? asString(row.getCell(5)) : 
+                readStringCell(row, headerMap, Arrays.asList("status"));
+            if (statusStr != null && !statusStr.trim().isEmpty()) {
+                try { 
+                    // Try to parse as a number first
+                    payload.put("status", Integer.parseInt(statusStr.trim())); 
+                } catch (NumberFormatException ignore) {
+                    // If it's not a number, check for known status values
+                    if (statusStr.trim().equalsIgnoreCase("active")) {
+                        payload.put("status", 300);
+                        logger.info("Converted status 'ACTIVE' to 300");
+                    } else if (statusStr.trim().equalsIgnoreCase("inactive")) {
+                        payload.put("status", 400);
+                        logger.info("Converted status 'INACTIVE' to 400");
+                    } else if (statusStr.trim().equalsIgnoreCase("closed")) {
+                        payload.put("status", 600);
+                        logger.info("Converted status 'CLOSED' to 600");
+                    } else {
+                        logger.warn("Unknown status value '{}' for teller '{}', must be ACTIVE, INACTIVE, CLOSED, or a numeric code", 
+                                   statusStr.trim(), name.trim());
+                    }
+                }
+            }
+            
             // locale/dateFormat required when dates present
-            payload.putIfAbsent("locale", fineractApiService.getLocale());
-            payload.putIfAbsent("dateFormat", fineractApiService.getDateFormat());
+            payload.put("locale", fineractApiService.getLocale());
+            payload.put("dateFormat", fineractApiService.getDateFormat());
 
             try {
-                logger.info("Posting teller '{}'", name.trim());
-                fineractApiService.postJson("tellers", payload);
+                logger.info("Posting teller '{}' with payload: {}", name.trim(), payload);
+                Map<String, Object> response = fineractApiService.postJson("tellers", payload);
+                Integer resourceId = extractResourceId(response);
+                if (resourceId != null) {
+                    logger.info("Successfully created teller '{}' with ID: {}", name.trim(), resourceId);
+                } else {
+                    logger.info("Successfully created teller '{}'", name.trim());
+                }
                 created++;
             } catch (Exception e) {
-                logger.warn("Failed creating teller '{}': {}", name, e.getMessage());
+                logger.error("Failed creating teller '{}': {}", name, e.getMessage());
+                // Log the payload for debugging
+                logger.error("Teller payload that failed: {}", payload);
             }
         }
         logger.info("Tellers created: {}", created);

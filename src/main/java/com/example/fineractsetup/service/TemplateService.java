@@ -2,11 +2,8 @@ package com.example.fineractsetup.service;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.io.Resource;
-import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -23,10 +20,24 @@ public class TemplateService {
     
     private final FileService fileService;
     private final FineractApiService fineractApiService;
-    private final PathMatchingResourcePatternResolver resolver = new PathMatchingResourcePatternResolver();
     
     // Map of template paths to their corresponding API endpoints
     private final Map<String, String> templateEndpoints = new HashMap<>();
+    
+    // Define the order in which templates should be processed to respect dependencies
+    private final List<String> templateProcessingOrder = Arrays.asList(
+        "data/Offices.xls",
+        "data/Staffs.xls",
+        "data/Users.xls",
+        "data/ChartOfAccounts.xls",
+        "data/workbook-templates/Currencies.xls",
+        "data/workbook-templates/PaymentType.xls",
+        "data/workbook-templates/Roles.xls",
+        "data/workbook-templates/SavingsProduct.xls",
+        "data/SavingsAccount.xls",
+        "data/workbook-templates/Clients.xls",
+        "data/workbook-templates/Teller.xls"
+    );
     
     public TemplateService(FileService fileService, FineractApiService fineractApiService) {
         this.fileService = fileService;
@@ -43,13 +54,12 @@ public class TemplateService {
         // Direct upload templates
         templateEndpoints.put("data/Offices.xls", "offices/uploadtemplate");
         templateEndpoints.put("data/Staffs.xls", "staff/uploadtemplate");
+        // Users template is now processed as a workbook
         templateEndpoints.put("data/Users.xls", "users/uploadtemplate");
         templateEndpoints.put("data/ChartOfAccounts.xls", "glaccounts/uploadtemplate");
         templateEndpoints.put("data/SavingsAccount.xls", "savingsaccounts/uploadtemplate");
         
         // Template endpoints for workbook-based templates
-        // These are processed by WorkbookService, but we keep them here for reference
-        // and to ensure they're included in getAllTemplatePaths()
         templateEndpoints.put("data/workbook-templates/Clients.xls", "clients");
         templateEndpoints.put("data/workbook-templates/SavingsProduct.xls", "savingsproducts");
         templateEndpoints.put("data/workbook-templates/Teller.xls", "tellers");
@@ -60,27 +70,26 @@ public class TemplateService {
     }
     
     /**
-     * Gets all template paths that should be processed
+     * Gets all template paths in the correct processing order to respect dependencies
      * 
-     * @return a list of template paths
+     * @return a list of template paths in the correct processing order
      */
     public List<String> getAllTemplatePaths() {
         List<String> paths = new ArrayList<>();
         
-        // Add all templates from the map
-        paths.addAll(templateEndpoints.keySet());
-        
-        // Discover additional templates
-        try {
-            Resource[] directTemplates = resolver.getResources("classpath*:data/*.xls");
-            for (Resource resource : directTemplates) {
-                String path = "data/" + resource.getFilename();
-                if (!paths.contains(path)) {
-                    paths.add(path);
-                }
+        // First add all known templates in the defined order
+        for (String template : templateProcessingOrder) {
+            if (templateEndpoints.containsKey(template)) {
+                paths.add(template);
             }
-        } catch (IOException e) {
-            logger.warn("Error discovering direct templates: {}", e.getMessage());
+        }
+        
+        // Then add any additional templates that weren't in the ordered list
+        for (String template : templateEndpoints.keySet()) {
+            if (!paths.contains(template)) {
+                logger.warn("Template {} is not in the defined processing order. Adding to the end.", template);
+                paths.add(template);
+            }
         }
         
         return paths;

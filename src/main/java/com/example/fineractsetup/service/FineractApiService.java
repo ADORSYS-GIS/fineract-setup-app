@@ -230,7 +230,7 @@ public class FineractApiService {
                     }
 
                     // Extract client data (simplified example)
-                    payload.put("officeId", 1); // Default office ID
+                    payload.put("officeId", 1);
                     payload.put("firstname", "Default");
                     payload.put("lastname", "Client");
                     payload.put("active", true);
