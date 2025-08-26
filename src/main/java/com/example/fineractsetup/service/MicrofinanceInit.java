@@ -35,28 +35,56 @@ public class MicrofinanceInit implements CommandLineRunner {
         int successCount = 0;
         int failureCount = 0;
         
-        // 1) Process JSON-based workbook configurations first (currencies, payment types, roles, savings products)
-        try {
-            logger.info("Processing workbook-based configurations (JSON endpoints)...");
-            workbookService.processWorkbookTemplates();
-        } catch (Exception e) {
-            logger.error("Error during workbook configuration processing", e);
-        }
-
-        // Process all templates
+        // 1) First process bulk import templates
+        logger.info("=== Processing Bulk Import Templates ===");
         for (String templatePath : templateService.getAllTemplatePaths()) {
-            try {
-                boolean success = templateService.processTemplate(templatePath);
-                if (success) {
-                    logger.info("Successfully processed template: {}", templatePath);
-                    successCount++;
-                } else {
-                    logger.warn("Failed to process template: {}", templatePath);
+            if (templatePath.endsWith(".xls") && !templatePath.contains("workbook-templates/")) {
+                try {
+                    logger.info("Processing bulk import template: {}", templatePath);
+                    boolean success = templateService.processTemplate(templatePath);
+                    if (success) {
+                        logger.info(" Successfully processed bulk import template: {}", templatePath);
+                        successCount++;
+                    } else {
+                        logger.error(" Failed to process bulk import template: {}", templatePath);
+                        failureCount++;
+                    }
+                } catch (Exception e) {
+                    logger.error(" Error processing bulk import template: {} - {}", templatePath, e.getMessage(), e);
                     failureCount++;
                 }
-            } catch (Exception e) {
-                logger.error("Error processing template: {}", templatePath, e);
-                failureCount++;
+            }
+        }
+        
+        // 2) Process workbook-based configurations (JSON endpoints)
+        logger.info("\n=== Processing Workbook Templates (JSON Endpoints) ===");
+        try {
+            logger.info("Starting workbook-based configurations...");
+            workbookService.processWorkbookTemplates();
+            logger.info("Completed workbook-based configurations");
+        } catch (Exception e) {
+            logger.error(" Error during workbook configuration processing: {}", e.getMessage(), e);
+            failureCount++;
+        }
+        
+        // 3) Process any remaining templates from the workbook-templates directory
+        logger.info("\n=== Processing Remaining Templates ===");
+        for (String templatePath : templateService.getAllTemplatePaths()) {
+            if (templatePath.contains("workbook-templates/")) {
+                try {
+                    logger.info("Processing workbook template: {}", templatePath);
+                    boolean success = templateService.processTemplate(templatePath);
+                    if (success) {
+                        logger.info("Successfully processed workbook template: {}", templatePath);
+                        successCount++;
+                    } else {
+                        logger.error("Failed to process workbook template: {}", templatePath);
+                        failureCount++;
+                    }
+                } catch (Exception e) {
+                    logger.error("Error processing workbook template: {} - {}", templatePath, e.getMessage(), e);
+                    failureCount++;
+                }
             }
         }
         
