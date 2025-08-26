@@ -1,5 +1,8 @@
 package com.example.fineractsetup.service;
 
+import com.example.fineractsetup.service.auth.AuthService;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.ss.usermodel.WorkbookFactory;
@@ -8,25 +11,27 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.*;
-import org.springframework.stereotype.Service;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.retry.backoff.ExponentialBackOffPolicy;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
-import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.HashMap;
-import java.util.Map;
 import java.util.List;
-
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
 
 /**
  * Service for communicating with the Fineract API
@@ -36,7 +41,7 @@ public class FineractApiService {
     private static final Logger logger = LoggerFactory.getLogger(FineractApiService.class);
 
     private final RestTemplate restTemplate;
-    private final KeycloakAuthService keycloakAuthService;
+    private final AuthService authService;
 
     @Value("${fineract.api.url}")
     private String fineractUrl;
@@ -53,6 +58,11 @@ public class FineractApiService {
     @Value("${retry.max-attempts:3}")
     private int maxRetryAttempts;
 
+    public FineractApiService(RestTemplate restTemplate, AuthService authService) {
+        this.restTemplate = restTemplate;
+        this.authService = authService;
+    }
+
     @Value("${retry.initial-interval:1000}")
     private long initialRetryInterval;
 
@@ -62,21 +72,13 @@ public class FineractApiService {
     @Value("${retry.max-interval:10000}")
     private long maxRetryInterval;
 
-    public FineractApiService(RestTemplate restTemplate, KeycloakAuthService keycloakAuthService) {
-        this.restTemplate = restTemplate;
-        this.keycloakAuthService = keycloakAuthService;
-    }
-
     private HttpHeaders buildAuthHeaders(MediaType contentType) {
-        HttpHeaders headers = new HttpHeaders();
+        HttpHeaders headers = authService.getAuthHeaders();
         if (contentType != null) {
             headers.setContentType(contentType);
         }
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.set("Fineract-Platform-TenantId", tenantId);
-
-        String accessToken = keycloakAuthService.getAccessToken();
-        headers.set("Authorization", "Bearer " + accessToken);
         return headers;
     }
 
@@ -315,9 +317,8 @@ public class FineractApiService {
      * @return true if the upload was successful, false otherwise
      */
     public boolean uploadTemplate(byte[] fileBytes, String endpoint, String fileName) {
-        String accessToken = keycloakAuthService.getAccessToken();
-        logger.info("Access token: {}", accessToken);
-        if (accessToken == null) {
+        if (!authService.isAuthenticated()) {
+            logger.error("Not authenticated with the authentication service");
             return false;
         }
 
@@ -351,7 +352,9 @@ public class FineractApiService {
                 headers.setContentType(MediaType.MULTIPART_FORM_DATA);
                 headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
                 headers.set("Fineract-Platform-TenantId", tenantId);
-                headers.set("Authorization", "Bearer " + accessToken);
+                // Use authService to get authentication headers
+                HttpHeaders authHeaders = authService.getAuthHeaders();
+                headers.addAll(authHeaders);
 
                 // Use the correct content type for Excel xls files (BIFF8 format)
                 String contentType = "application/vnd.ms-excel";

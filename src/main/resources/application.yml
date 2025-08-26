@@ -2,17 +2,29 @@ fineract:
   api:
     url: https://localhost/fineract-provider/api/v1
     tenant: default
-    username: mifos
-    password: password
+
+    # Authentication configuration - must be one of: 'oauth' or 'basic'
+    auth:
+      type: ${AUTH_TYPE:oauth}  # Set to 'basic' or 'oauth' (default: oauth)
+
+      # Basic Auth configuration (used when auth.type=basic)
+      basic:
+        username: mifos
+        password: password
+
+      # OAuth configuration (used when auth.type=oauth)
+      oauth:
+        keycloak:
+          url: http://172.17.0.1:9000/realms/fineract/protocol/openid-connect/token
+          grant-type: password
+          client-id: setup-app-client
+          client-secret: '**********'
+          username: ${fineract.api.auth.basic.username}
+          password: ${fineract.api.auth.basic.password}
+
     # Configurable locale and date format
     locale: en
     dateFormat: dd MMMM yyyy
-
-keycloak:
-  url: http://172.17.0.1:9000/realms/fineract/protocol/openid-connect/token
-  grant-type: password
-  client-id: setup-app-client
-  client-secret: '**********'
 
 # RestTemplate configuration
 rest:
