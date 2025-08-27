@@ -1,6 +1,6 @@
 fineract:
   api:
-    url: https://localhost/fineract-provider/api/v1
+    url: http://localhost:443/fineract-provider/api/v1
     tenant: default
     username: mifos
     password: password
