@@ -43,14 +43,14 @@ public class MicrofinanceInit implements CommandLineRunner {
                     logger.info("Processing bulk import template: {}", templatePath);
                     boolean success = templateService.processTemplate(templatePath);
                     if (success) {
-                        logger.info("✅ Successfully processed bulk import template: {}", templatePath);
+                        logger.info(" Successfully processed bulk import template: {}", templatePath);
                         successCount++;
                     } else {
-                        logger.error("❌ Failed to process bulk import template: {}", templatePath);
+                        logger.error(" Failed to process bulk import template: {}", templatePath);
                         failureCount++;
                     }
                 } catch (Exception e) {
-                    logger.error("❌ Error processing bulk import template: {} - {}", templatePath, e.getMessage(), e);
+                    logger.error(" Error processing bulk import template: {} - {}", templatePath, e.getMessage(), e);
                     failureCount++;
                 }
             }
@@ -61,9 +61,9 @@ public class MicrofinanceInit implements CommandLineRunner {
         try {
             logger.info("Starting workbook-based configurations...");
             workbookService.processWorkbookTemplates();
-            logger.info("✅ Completed workbook-based configurations");
+            logger.info("Completed workbook-based configurations");
         } catch (Exception e) {
-            logger.error("❌ Error during workbook configuration processing: {}", e.getMessage(), e);
+            logger.error(" Error during workbook configuration processing: {}", e.getMessage(), e);
             failureCount++;
         }
         
@@ -75,14 +75,14 @@ public class MicrofinanceInit implements CommandLineRunner {
                     logger.info("Processing workbook template: {}", templatePath);
                     boolean success = templateService.processTemplate(templatePath);
                     if (success) {
-                        logger.info("✅ Successfully processed workbook template: {}", templatePath);
+                        logger.info("Successfully processed workbook template: {}", templatePath);
                         successCount++;
                     } else {
-                        logger.error("❌ Failed to process workbook template: {}", templatePath);
+                        logger.error("Failed to process workbook template: {}", templatePath);
                         failureCount++;
                     }
                 } catch (Exception e) {
-                    logger.error("❌ Error processing workbook template: {} - {}", templatePath, e.getMessage(), e);
+                    logger.error("Error processing workbook template: {} - {}", templatePath, e.getMessage(), e);
                     failureCount++;
                 }
             }
