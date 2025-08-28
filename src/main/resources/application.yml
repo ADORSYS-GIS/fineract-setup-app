@@ -8,6 +8,12 @@ fineract:
     locale: en
     dateFormat: dd MMMM yyyy
 
+keycloak:
+  url: http://172.17.0.1:9000/realms/fineract/protocol/openid-connect/token
+  grant-type: password
+  client-id: setup-app-client
+  client-secret: '**********'
+
 # RestTemplate configuration
 rest:
   connection:
