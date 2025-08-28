@@ -27,12 +27,12 @@ public class TemplateService {
     // Define the order in which templates should be processed to respect dependencies
     private final List<String> templateProcessingOrder = Arrays.asList(
         "data/Offices.xls",
+        "data/workbook-templates/Roles.xls",
         "data/Staffs.xls",
         "data/Users.xls",
         "data/ChartOfAccounts.xls",
         "data/workbook-templates/Currencies.xls",
         "data/workbook-templates/PaymentType.xls",
-        "data/workbook-templates/Roles.xls",
         "data/workbook-templates/SavingsProduct.xls",
         "data/SavingsAccount.xls",
         "data/workbook-templates/Clients.xls",
@@ -53,6 +53,7 @@ public class TemplateService {
     private void initializeTemplateEndpoints() {
         // Direct upload templates
         templateEndpoints.put("data/Offices.xls", "offices/uploadtemplate");
+        templateEndpoints.put("data/workbook-templates/Roles.xls", "roles");
         templateEndpoints.put("data/Staffs.xls", "staff/uploadtemplate");
         // Users template is now processed as a workbook
         templateEndpoints.put("data/Users.xls", "users/uploadtemplate");
@@ -63,7 +64,6 @@ public class TemplateService {
         templateEndpoints.put("data/workbook-templates/Clients.xls", "clients");
         templateEndpoints.put("data/workbook-templates/SavingsProduct.xls", "savingsproducts");
         templateEndpoints.put("data/workbook-templates/Teller.xls", "tellers");
-        templateEndpoints.put("data/workbook-templates/Roles.xls", "roles");
         templateEndpoints.put("data/workbook-templates/Currencies.xls", "currencies");
         templateEndpoints.put("data/workbook-templates/PaymentType.xls", "paymenttypes");
 
