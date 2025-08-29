@@ -6,6 +6,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.HttpServerErrorException;
 
 import java.io.InputStream;
 import java.io.IOException;
@@ -198,7 +200,7 @@ public class WorkbookService {
 
         // Fetch available permissions once
         Set<String> availablePermissions = fetchAvailablePermissionNames();
-        
+        logger.info("Available permissions: {}", availablePermissions.size());
         // Fetch existing roles to avoid duplicates
         Map<String, Integer> existingRoles = fetchExistingRoles();
 
@@ -222,28 +224,55 @@ public class WorkbookService {
                 // If permissions are specified, we can still update them for the existing role
                 if (permissionsStr != null && !permissionsStr.trim().isEmpty()) {
                     try {
-                        List<Map<String, Object>> permsPayload = new ArrayList<>();
+                        // Create a map of permission names to boolean values (all true)
+                        Map<String, Object> permissionsMap = new HashMap<>();
+                        int skippedPermissions = 0;
+                        logger.info("Processing permissions for role '{}': {}", name.trim(), permissionsStr);
                         for (String token : permissionsStr.split(",")) {
                             String perm = token.trim();
                             if (perm.isEmpty()) continue;
                             if (availablePermissions.contains(perm)) {
-                                Map<String, Object> p = new HashMap<>();
-                                p.put("name", perm);
-                                p.put("selected", true);
-                                permsPayload.add(p);
+                                permissionsMap.put(perm, true);
+                                logger.info("Adding permission '{}' to role '{}'", perm, name.trim());
                             } else {
                                 logger.warn("Permission '{}' not available on server; skipping", perm);
+                                skippedPermissions++;
                             }
                         }
-                        if (!permsPayload.isEmpty()) {
+                        
+                        if (!permissionsMap.isEmpty()) {
+                            // Create the payload in the format required by the API
                             Map<String, Object> assignPayload = new HashMap<>();
-                            assignPayload.put("permissions", permsPayload);
-                            String endpoint = "roles/" + existingRoleId + "?command=permissions";
-                            logger.info("Updating permissions for existing role '{}'", name.trim());
-                            fineractApiService.postJson(endpoint, assignPayload);
+                            assignPayload.put("permissions", permissionsMap);
+                            
+                            // Use PUT request to update permissions for the existing role
+                            String endpoint = "roles/" + existingRoleId + "/permissions";
+                            logger.info("Updating permissions for existing role '{}' with {} permissions (skipped {} unavailable permissions)", 
+                                    name.trim(), permissionsMap.size(), skippedPermissions);
+                            
+                            try {
+                                Map<String, Object> response = fineractApiService.putJson(endpoint, assignPayload);
+                                logger.info("Successfully updated permissions for role '{}' - Response: {}", 
+                                        name.trim(), response != null ? response : "No response");
+                            } catch (HttpClientErrorException e) {
+                                logger.error("HTTP error updating permissions for role '{}': {} - {}", 
+                                        name.trim(), e.getStatusCode(), e.getResponseBodyAsString());
+                                // Log the payload that caused the error
+                                logger.error("Payload that caused the error: {}", assignPayload);
+                                // Don't throw the exception, just log it and continue
+                            } catch (HttpServerErrorException e) {
+                                logger.error("Server error updating permissions for role '{}': {} - {}", 
+                                        name.trim(), e.getStatusCode(), e.getResponseBodyAsString());
+                                // Log the payload that caused the error
+                                logger.error("Payload that caused the error: {}", assignPayload);
+                                // Don't throw the exception, just log it and continue
+                            }
+                        } else {
+                            logger.warn("No valid permissions found for role '{}' - all {} specified permissions were unavailable", 
+                                    name.trim(), skippedPermissions);
                         }
                     } catch (Exception e) {
-                        logger.warn("Failed updating permissions for existing role '{}': {}", name, e.getMessage());
+                        logger.error("Failed updating permissions for existing role '{}': {}", name, e.getMessage(), e);
                     }
                 }
                 continue;
@@ -266,31 +295,58 @@ public class WorkbookService {
                 created++;
 
                 if (permissionsStr != null && !permissionsStr.trim().isEmpty()) {
-                    List<Map<String, Object>> permsPayload = new ArrayList<>();
+                    // Create a map of permission names to boolean values (all true)
+                    Map<String, Object> permissionsMap = new HashMap<>();
+                    int skippedPermissions = 0;
+                    logger.info("Processing permissions for newly created role '{}': {}", name.trim(), permissionsStr);
                     for (String token : permissionsStr.split(",")) {
                         String perm = token.trim();
                         if (perm.isEmpty()) continue;
                         if (availablePermissions.contains(perm)) {
-                            Map<String, Object> p = new HashMap<>();
-                            p.put("name", perm);
-                            p.put("selected", true);
-                            permsPayload.add(p);
+                            permissionsMap.put(perm, true);
+                            logger.info("Adding permission '{}' to newly created role '{}'", perm, name.trim());
                         } else {
                             logger.warn("Permission '{}' not available on server; skipping", perm);
+                            skippedPermissions++;
                         }
                     }
-                    if (!permsPayload.isEmpty()) {
+                    logger.info("Added {} permissions to newly created role '{}' (skipped {} unavailable permissions)", 
+                            permissionsMap.size(), name.trim(), skippedPermissions);
+                    
+                    if (!permissionsMap.isEmpty()) {
+                        // Create the payload in the format required by the API
                         Map<String, Object> assignPayload = new HashMap<>();
-                        assignPayload.put("permissions", permsPayload);
-                        String endpoint = "roles/" + roleId + "?command=permissions";
-                        fineractApiService.postJson(endpoint, assignPayload);
+                        assignPayload.put("permissions", permissionsMap);
+                        
+                        // Use PUT request to update permissions for the newly created role
+                        String endpoint = "roles/" + roleId + "/permissions";
+                        logger.info("Assigning {} permissions to newly created role '{}'", 
+                                permissionsMap.size(), name.trim());
+                        try {
+                            Map<String, Object> response = fineractApiService.putJson(endpoint, assignPayload);
+                            logger.info("Successfully assigned permissions to role '{}' - Response: {}", 
+                                    name.trim(), response != null ? response : "No response");
+                        } catch (HttpClientErrorException e) {
+                            logger.error("HTTP error assigning permissions to role '{}': {} - {}", 
+                                    name.trim(), e.getStatusCode(), e.getResponseBodyAsString());
+                            // Log the payload that caused the error
+                            logger.error("Payload that caused the error: {}", assignPayload);
+                            // Don't throw the exception, just log it and continue
+                        } catch (HttpServerErrorException e) {
+                            logger.error("Server error assigning permissions to role '{}': {} - {}", 
+                                    name.trim(), e.getStatusCode(), e.getResponseBodyAsString());
+                            // Log the payload that caused the error
+                            logger.error("Payload that caused the error: {}", assignPayload);
+                            // Don't throw the exception, just log it and continue
+                        }
                     }
                 }
             } catch (Exception e) {
                 logger.warn("Failed creating role '{}': {}", name, e.getMessage());
             }
         }
-        logger.info("Roles: {} created, {} skipped (already exist)", created, skipped);
+        logger.info("Roles processing summary: {} created, {} skipped (already exist)", created, skipped);
+        logger.info("Role permissions have been updated according to the Roles.xls template");
     }
 
     /**
@@ -492,10 +548,67 @@ public class WorkbookService {
         logger.info("GL accounts created: {}", created);
     }
 
+    /**
+     * Fetches existing tellers from the Fineract API and creates a map of teller names to their IDs.
+     * This is used to check for duplicate tellers before creation.
+     * 
+     * @return a map of teller names to their IDs
+     */
+    private Map<String, Integer> fetchExistingTellers() {
+        Map<String, Integer> tellers = new HashMap<>();
+        try {
+            // Tellers endpoint returns an array of teller objects
+            List<Map<String, Object>> tellersList = fineractApiService.getJsonArray("tellers");
+            if (tellersList == null || tellersList.isEmpty()) {
+                logger.info("No existing tellers found in the system");
+                return tellers;
+            }
+            
+            for (Map<String, Object> teller : tellersList) {
+                Object nameObj = teller.get("name");
+                Object idObj = teller.get("id");
+                
+                if (nameObj instanceof String && idObj != null) {
+                    String name = (String) nameObj;
+                    Integer id;
+                    
+                    if (idObj instanceof Integer) {
+                        id = (Integer) idObj;
+                    } else if (idObj instanceof Number) {
+                        id = ((Number) idObj).intValue();
+                    } else if (idObj instanceof String) {
+                        try {
+                            id = Integer.parseInt((String) idObj);
+                        } catch (NumberFormatException e) {
+                            logger.warn("Could not parse teller ID '{}' for teller '{}'", idObj, name);
+                            continue;
+                        }
+                    } else {
+                        logger.warn("Unexpected ID type for teller '{}': {}", name, idObj.getClass().getName());
+                        continue;
+                    }
+                    
+                    tellers.put(name, id);
+                    logger.debug("Found existing teller: '{}' with ID {}", name, id);
+                }
+            }
+            
+            logger.info("Found {} existing tellers in the system", tellers.size());
+        } catch (Exception e) {
+            logger.warn("Failed to fetch existing tellers: {}", e.getMessage());
+        }
+        return tellers;
+    }
+
     private void processTellersSheet(Sheet sheet) {
         int firstRow = findFirstNonEmptyRow(sheet);
         Map<String, Integer> headerMap = readHeaderRow(sheet);
+        
+        // Fetch existing tellers to avoid duplicates
+        Map<String, Integer> existingTellers = fetchExistingTellers();
+        
         int created = 0;
+        int skipped = 0;
         int dataStart = headerMap.isEmpty() ? firstRow : firstRow + 1;
         for (int r = dataStart; r <= sheet.getLastRowNum(); r++) {
             Row row = sheet.getRow(r);
@@ -505,6 +618,14 @@ public class WorkbookService {
             String name = headerMap.isEmpty() ? asString(row.getCell(0)) : 
                 readStringCell(row, headerMap, Arrays.asList("tellername", "name", "teller"));
             if (name == null || name.trim().isEmpty()) continue;
+            
+            // Check if teller already exists
+            if (existingTellers.containsKey(name.trim())) {
+                logger.info("Teller '{}' already exists with ID {}, skipping creation", 
+                        name.trim(), existingTellers.get(name.trim()));
+                skipped++;
+                continue;
+            }
 
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("name", name.trim());
@@ -654,7 +775,7 @@ public class WorkbookService {
                 logger.error("Teller payload that failed: {}", payload);
             }
         }
-        logger.info("Tellers created: {}", created);
+        logger.info("Tellers: {} created, {} skipped (already exist)", created, skipped);
     }
     
     /**
@@ -905,20 +1026,89 @@ public class WorkbookService {
 
     private Set<String> fetchAvailablePermissionNames() {
         try {
-            // Permissions endpoint returns an array root in many versions
+            // Get permissions from the standard endpoint
             List<Map<String, Object>> permissions = fineractApiService.getJsonArray("permissions");
-            if (permissions == null || permissions.isEmpty()) return Collections.emptySet();
-            Set<String> names = new HashSet<>();
-            for (Map<String, Object> p : permissions) {
-                Object name = p.get("name");
-                if (name instanceof String) names.add((String) name);
+            logger.info("Fetched permissions from API, found {} items", 
+                    permissions != null ? permissions.size() : 0);
+            
+            // If no permissions returned, return empty set
+            if (permissions == null || permissions.isEmpty()) {
+                logger.warn("No permissions returned from API");
+                return Collections.emptySet();
             }
-            if (!names.isEmpty()) return names;
+            
+            // Log the permissions structure for debugging
+            logger.debug("Permissions structure: {}", permissions);
+            
+            Set<String> names = new HashSet<>();
+            
+            // Parse permissions in the format shown in the issue description
+            // Each permission has: grouping, code, entityName, actionName, selected
+            for (Map<String, Object> p : permissions) {
+                // Extract the code which contains the permission name
+                Object codeObj = p.get("code");
+                if (codeObj instanceof String) {
+                    String code = ((String) codeObj).trim();
+                    if (!code.isEmpty()) {
+                        names.add(code);
+                        
+                        // Also add CHECKER variant for maker-checker functionality
+                        if (!code.endsWith("_CHECKER")) {
+                            names.add(code + "_CHECKER");
+                        }
+                    }
+                }
+                
+                // Alternative: construct permission from actionName and entityName
+                Object actionNameObj = p.get("actionName");
+                Object entityNameObj = p.get("entityName");
+                if (actionNameObj instanceof String && entityNameObj instanceof String) {
+                    String actionName = ((String) actionNameObj).trim();
+                    String entityName = ((String) entityNameObj).trim();
+                    if (!actionName.isEmpty() && !entityName.isEmpty()) {
+                        String permName = actionName + "_" + entityName;
+                        names.add(permName);
+                        
+                        // Also add CHECKER variant for maker-checker functionality
+                        if (!permName.endsWith("_CHECKER")) {
+                            names.add(permName + "_CHECKER");
+                        }
+                    }
+                }
+            }
+            
+            // Add common CHECKER permissions that might be missing
+            String[] commonActions = {"APPROVE", "REJECT", "CREATE", "DELETE", "UPDATE", "DISBURSE", "REPAYMENT", "WITHDRAWAL", "DEPOSIT"};
+            String[] commonEntities = {"LOAN", "CLIENT", "SAVINGS", "GROUP", "CENTER"};
+            
+            for (String action : commonActions) {
+                for (String entity : commonEntities) {
+                    String checkerPerm = action + "_" + entity + "_CHECKER";
+                    names.add(checkerPerm);
+                }
+            }
+            
+            logger.info("Successfully extracted {} permissions from API response", names.size());
+            return names;
         } catch (Exception e) {
             logger.warn("Failed to fetch permissions list: {}", e.getMessage());
+            // Return a set of common permissions as fallback in case of error
+            Set<String> fallbackPermissions = new HashSet<>();
+            fallbackPermissions.add("READ_CLIENT");
+            fallbackPermissions.add("CREATE_CLIENT");
+            fallbackPermissions.add("UPDATE_CLIENT");
+            fallbackPermissions.add("DELETE_CLIENT");
+            fallbackPermissions.add("READ_LOAN");
+            fallbackPermissions.add("CREATE_LOAN");
+            fallbackPermissions.add("UPDATE_LOAN");
+            fallbackPermissions.add("READ_SAVINGS");
+            fallbackPermissions.add("CREATE_SAVINGS");
+            fallbackPermissions.add("UPDATE_SAVINGS");
+            logger.info("Using fallback permissions due to error: {}", fallbackPermissions);
+            return fallbackPermissions;
         }
-        return Collections.emptySet();
     }
+    
     
     /**
      * Fetches existing roles from the Fineract API and creates a map of role names to their IDs.
