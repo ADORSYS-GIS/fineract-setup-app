@@ -7,6 +7,9 @@ fineract:
     # Configurable locale and date format
     locale: en
     dateFormat: dd MMMM yyyy
+    auth:
+      # Authentication method: 'oauth' or 'basic'
+      method: ${FINERACT_API_AUTH_METHOD:oauth}
 
 keycloak:
   url: http://172.17.0.1:9000/realms/fineract/protocol/openid-connect/token

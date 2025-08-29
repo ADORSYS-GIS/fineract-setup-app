@@ -50,6 +50,15 @@ public class FineractApiService {
     @Value("${fineract.api.dateFormat:dd MMMM yyyy}")
     private String dateFormat;
 
+    @Value("${fineract.api.auth.method}")
+    private String authMethod;
+
+    @Value("${fineract.api.username}")
+    private String username;
+
+    @Value("${fineract.api.password}")
+    private String password;
+
     @Value("${retry.max-attempts:3}")
     private int maxRetryAttempts;
 
@@ -75,8 +84,23 @@ public class FineractApiService {
         headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
         headers.set("Fineract-Platform-TenantId", tenantId);
 
-        String accessToken = keycloakAuthService.getAccessToken();
-        headers.set("Authorization", "Bearer " + accessToken);
+        if ("basic".equalsIgnoreCase(authMethod)) {
+            // Basic Authentication
+            String auth = username + ":" + password;
+            String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes(StandardCharsets.UTF_8));
+            headers.set("Authorization", "Basic " + encodedAuth);
+            logger.debug("Using Basic Authentication");
+        } else {
+            // OAuth (default)
+            String accessToken = keycloakAuthService.getAccessToken();
+            if (accessToken == null) {
+                logger.error("Failed to obtain OAuth access token");
+                throw new RuntimeException("Failed to obtain OAuth access token");
+            }
+            headers.set("Authorization", "Bearer " + accessToken);
+            logger.debug("Using OAuth Bearer token authentication");
+        }
+        
         return headers;
     }
 
@@ -315,12 +339,6 @@ public class FineractApiService {
      * @return true if the upload was successful, false otherwise
      */
     public boolean uploadTemplate(byte[] fileBytes, String endpoint, String fileName) {
-        String accessToken = keycloakAuthService.getAccessToken();
-        logger.info("Access token: {}", accessToken);
-        if (accessToken == null) {
-            return false;
-        }
-
         logger.info("Uploading template: {} to endpoint: {}", fileName, endpoint);
 
         // Implement retry logic
@@ -346,12 +364,8 @@ public class FineractApiService {
             attempts++;
 
             try {
-                // Set up headers with proper content type and authentication
-                HttpHeaders headers = new HttpHeaders();
-                headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-                headers.setAccept(Collections.singletonList(MediaType.APPLICATION_JSON));
-                headers.set("Fineract-Platform-TenantId", tenantId);
-                headers.set("Authorization", "Bearer " + accessToken);
+                // Use buildAuthHeaders for consistent authentication handling
+                HttpHeaders headers = buildAuthHeaders(MediaType.MULTIPART_FORM_DATA);
 
                 // Use the correct content type for Excel xls files (BIFF8 format)
                 String contentType = "application/vnd.ms-excel";
