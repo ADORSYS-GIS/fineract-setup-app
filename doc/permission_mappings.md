@@ -106,12 +106,6 @@ The Branch Manager oversees approvals, staff management, and branch-level financ
 - `READ_CURRENCY`
 - `READ_DATATABLE`
 
-## Notes on Implementation
-
-- **Large Withdrawals:** The approval of large withdrawals is likely a workflow rule within Fineract, not a distinct permission. The Branch Manager will need the appropriate `ACTIVATE_SAVINGSACOOUNT` or `APPROVE_SAVINGSACCOUNT` (if checker-maker is enabled) permission to authorize transactions flagged for review.
-- **Reporting:** Generating specific reports like a "Balance Sheet" is a function of the Fineract UI/API. The permissions listed under "Configuration & Authorisation Permissions" for the Branch Manager should be sufficient to grant access to the necessary data for these reports.
-- **Reconciliation:** This is a business process, not a single permission. The Branch Manager's ability to read transaction data and create/reverse journal entries will facilitate this process.
-
 ## 4. Current Implemented Permissions (Initial Phase)
 
 This section outlines the specific subset of permissions currently being implemented for each role in the initial phase.
