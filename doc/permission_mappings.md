@@ -91,7 +91,7 @@ The Branch Manager oversees approvals, staff management, and branch-level financ
 
 ### Transaction (Savings) Permissions
 - `APPROVE_SAVINGSACCOUNT`
-- `ACTIVATE_SAVINGSACCOUNT` # This permission is used to approve and activate new savings accounts.
+- `ACTIVATE_SAVINGSACCOUNT` 
 
 
 ### Accounting Permissions
