@@ -34,6 +34,7 @@ The Account Manager handles client creation, account opening, and loan initiatio
 
 ### Organisation Permissions
 - `READ_SAVINGSPRODUCT`
+- `ACTIVATE_SAVINGSACCOUNT`
 - `READ_LOANPRODUCT`
 - `READ_OFFICE`
 - `READ_STAFF`
@@ -47,10 +48,13 @@ The Cashier handles client-facing financial transactions.
 ### Portfolio Permissions
 - `READ_CLIENT`
 - `READ_SAVINGSACCOUNT`
+- `READ_OFFICE`
 
 ### Transaction (Savings) Permissions
 - `DEPOSIT_SAVINGSACCOUNT`
 - `WITHDRAWAL_SAVINGSACCOUNT`
+- `READ_JOURNALENTRY`
+- `READ_GLACCOUNT`
 
 ---
 
@@ -90,13 +94,14 @@ The Branch Manager oversees approvals, staff management, and branch-level financ
 - `WITHDRAW_LOAN`
 
 ### Transaction (Savings) Permissions
-- `APPROVE_SAVINGSACCOUNT`
-- `ACTIVATE_SAVINGSACCOUNT` 
+- `APPROVE_SAVINGSACCOUNT` 
 
 
 ### Accounting Permissions
 - `CREATE_JOURNALENTRY`
 - `REVERSE_JOURNALENTRY`
+- `READ_JOURNALENTRY`
+- `READ_GLACCOUNT`
 
 ### Configuration & Authorisation Permissions (for oversight)
 - `READ_AUDIT`
@@ -129,6 +134,8 @@ This section outlines the specific subset of permissions currently being impleme
 - `ALLOCATECASHIER_TELLER`
 - `ALLOCATECASHTOCASHIER_TELLER`
 - `SETTLECASHFROMCASHIER_TELLER`
+- `READ_JOURNALENTRY`
+- `READ_GLACCOUNT`
 
 ### 4.2. Account Manager (Initial Permissions)
 
@@ -139,6 +146,7 @@ This section outlines the specific subset of permissions currently being impleme
 - `CREATE_SAVINGSACCOUNT`
 - `READ_SAVINGSACCOUNT`
 - `READ_SAVINGSPRODUCT`
+- `ACTIVATE_SAVINGSACCOUNT`
 - `READ_OFFICE`
 - `READ_STAFF`
 
@@ -148,3 +156,6 @@ This section outlines the specific subset of permissions currently being impleme
 - `READ_SAVINGSACCOUNT`
 - `DEPOSIT_SAVINGSACCOUNT`
 - `WITHDRAWAL_SAVINGSACCOUNT`
+- `READ_JOURNALENTRY`
+- `READ_GLACCOUNT`
+- `READ_OFFICE`
