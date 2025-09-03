@@ -79,6 +79,9 @@ The Branch Manager oversees approvals, staff management, and branch-level financ
 - `READ_CHARGE`
 - `READ_FUND`
 - `READ_MAKERCHECKER`
+- `ALLOCATECASHIER_TELLER`
+- `ALLOCATECASHTOCASHIER_TELLER`
+- `SETTLECASHFROMCASHIER_TELLER`
 
 ### Transaction (Loan) Permissions
 - `APPROVE_LOAN`
@@ -123,6 +126,9 @@ This section outlines the specific subset of permissions currently being impleme
 - `READ_ROLE`
 - `READ_USER`
 - `READ_CURRENCY`
+- `ALLOCATECASHIER_TELLER`
+- `ALLOCATECASHTOCASHIER_TELLER`
+- `SETTLECASHFROMCASHIER_TELLER`
 
 ### 4.2. Account Manager (Initial Permissions)
 
