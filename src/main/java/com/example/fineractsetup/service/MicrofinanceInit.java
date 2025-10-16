@@ -81,7 +81,7 @@ public class MicrofinanceInit implements CommandLineRunner {
 
                     // If we just processed the Chart of Accounts, pause to allow the server to catch up
                     if (templatePath.equals("data/ChartOfAccounts.xls")) {
-                        logger.info("Pausing for 10 seconds to allow GL accounts to be processed...");
+                        logger.info("Pausing for 4 seconds to allow GL accounts to be processed...");
                         try {
                             Thread.sleep(5000);
                         } catch (InterruptedException e) {
