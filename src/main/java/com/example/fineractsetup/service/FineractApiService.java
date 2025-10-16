@@ -24,6 +24,8 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.List;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.ArrayList;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -70,6 +72,8 @@ public class FineractApiService {
 
     @Value("${retry.max-interval:10000}")
     private long maxRetryInterval;
+
+    private final Map<String, Integer> officeNameToIdCache = new ConcurrentHashMap<>();
 
     public FineractApiService(RestTemplate restTemplate, KeycloakAuthService keycloakAuthService) {
         this.restTemplate = restTemplate;
@@ -122,6 +126,99 @@ public class FineractApiService {
         return base + "/" + ep;
     }
 
+    public Integer getOfficeId(String officeName) {
+        if (officeNameToIdCache.isEmpty()) {
+            fetchAndCacheOffices();
+        }
+        String normalizedOfficeName = normalize(officeName);
+        for (Map.Entry<String, Integer> entry : officeNameToIdCache.entrySet()) {
+            if (normalize(entry.getKey()).equals(normalizedOfficeName)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private String normalize(String input) {
+        if (input == null) return "";
+        return input.replaceAll("[^A-Za-z0-9]", "").toLowerCase();
+    }
+
+    private void logFineractError(String responseBody, String method, String url, HttpStatus status) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            @SuppressWarnings("unchecked")
+            Map<String, Object> errorMap = mapper.readValue(responseBody, new TypeReference<Map<String, Object>>() {});
+
+            boolean isDependencyError = false;
+            if (errorMap.containsKey("errors")) {
+                Object errorsObj = errorMap.get("errors");
+                if (errorsObj instanceof List) {
+                    @SuppressWarnings("unchecked")
+                    List<Map<String, Object>> errors = (List<Map<String, Object>>) errorsObj;
+                    if (!errors.isEmpty()) {
+                        Map<String, Object> firstError = errors.get(0);
+                        String devMessage = (String) firstError.get("developerMessage");
+                        if (devMessage != null && devMessage.contains("does not exist")) {
+                            isDependencyError = true;
+                        }
+                    }
+                }
+            }
+
+            String devMessage = (String) errorMap.get("developerMessage");
+            String userMessage = (String) errorMap.get("defaultUserMessage");
+
+            if (status == HttpStatus.NOT_FOUND && isDependencyError) {
+                 logger.debug("HTTP error {} {}: {} - Developer Message: '{}', User Message: '{}'",
+                    method, url, status, devMessage, userMessage);
+            } else {
+                logger.error("HTTP error {} {}: {} - Developer Message: '{}', User Message: '{}'",
+                        method, url, status, devMessage, userMessage);
+            }
+        } catch (Exception ex) {
+            // Fallback logging
+            if (status == HttpStatus.NOT_FOUND && (responseBody != null && responseBody.contains("does not exist"))) {
+                logger.debug("HTTP error {} {}: {} body={}", method, url, status, responseBody);
+            } else {
+                logger.error("HTTP error {} {}: {} body={}", method, url, status, responseBody);
+            }
+        }
+    }
+
+    private void fetchAndCacheOffices() {
+        try {
+            List<Map<String, Object>> offices = getJsonArray("offices");
+            if (offices != null) {
+                for (Map<String, Object> office : offices) {
+                    if (office.containsKey("name") && office.containsKey("id")) {
+                        officeNameToIdCache.put(office.get("name").toString(), (Integer) office.get("id"));
+                    }
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Failed to fetch and cache offices", e);
+        }
+    }
+
+    public List<String> getPaymentTypes() {
+        try {
+            List<Map<String, Object>> paymentTypes = getJsonArray("paymenttypes");
+            if (paymentTypes != null) {
+                List<String> paymentTypeNames = new ArrayList<>();
+                for (Map<String, Object> paymentType : paymentTypes) {
+                    if (paymentType.containsKey("name")) {
+                        paymentTypeNames.add(paymentType.get("name").toString());
+                    }
+                }
+                return paymentTypeNames;
+            }
+        } catch (Exception e) {
+            logger.error("Failed to fetch payment types", e);
+        }
+        return Collections.emptyList();
+    }
+
     /**
      * Performs a JSON POST to a Fineract endpoint.
      */
@@ -140,7 +237,12 @@ public class FineractApiService {
             ObjectMapper mapper = new ObjectMapper();
             return mapper.readValue(body, new TypeReference<Map<String, Object>>(){});
         } catch (HttpClientErrorException | HttpServerErrorException e) {
-            logger.error("HTTP error POST {}: {} body={}", url, e.getStatusCode(), e.getResponseBodyAsString());
+            String responseBody = e.getResponseBodyAsString();
+            if (responseBody != null && responseBody.contains("already exists")) {
+                logger.info("Entity already exists, skipping creation. URL: {}", url);
+                return Collections.emptyMap(); // Return empty map to indicate non-failure
+            }
+            logFineractError(responseBody, "POST", url, e.getStatusCode());
             throw e;
         } catch (Exception e) {
             logger.error("Unexpected error POST {}: {}", url, e.getMessage(), e);
@@ -166,7 +268,7 @@ public class FineractApiService {
             ObjectMapper mapper = new ObjectMapper();
             return mapper.readValue(body, new TypeReference<Map<String, Object>>(){});
         } catch (HttpClientErrorException | HttpServerErrorException e) {
-            logger.error("HTTP error PUT {}: {} body={}", url, e.getStatusCode(), e.getResponseBodyAsString());
+            logFineractError(e.getResponseBodyAsString(), "PUT", url, e.getStatusCode());
             throw e;
         } catch (Exception e) {
             logger.error("Unexpected error PUT {}: {}", url, e.getMessage(), e);
@@ -192,7 +294,7 @@ public class FineractApiService {
             ObjectMapper mapper = new ObjectMapper();
             return mapper.readValue(body, new TypeReference<Map<String, Object>>(){});
         } catch (HttpClientErrorException | HttpServerErrorException e) {
-            logger.error("HTTP error GET {}: {} body={}", url, e.getStatusCode(), e.getResponseBodyAsString());
+            logFineractError(e.getResponseBodyAsString(), "GET", url, e.getStatusCode());
             throw e;
         } catch (Exception e) {
             logger.error("Unexpected error GET {}: {}", url, e.getMessage(), e);
@@ -218,7 +320,7 @@ public class FineractApiService {
             ObjectMapper mapper = new ObjectMapper();
             return mapper.readValue(body, new TypeReference<List<Map<String, Object>>>(){});
         } catch (HttpClientErrorException | HttpServerErrorException e) {
-            logger.error("HTTP error GET {}: {} body={}", url, e.getStatusCode(), e.getResponseBodyAsString());
+            logFineractError(e.getResponseBodyAsString(), "GET", url, e.getStatusCode());
             throw e;
         } catch (Exception e) {
             logger.error("Unexpected error GET {}: {}", url, e.getMessage(), e);
@@ -245,24 +347,7 @@ public class FineractApiService {
                 // Extract data from the workbook based on the endpoint
                 Map<String, Object> payload = new HashMap<>();
 
-                if (endpoint.equals("clients/template")) {
-                    // Process client template
-                    Sheet sheet = workbook.getSheetAt(0);
-                    if (sheet == null) {
-                        logger.error("No sheet found in client template");
-                        return false;
-                    }
-
-                    // Extract client data (simplified example)
-                    payload.put("officeId", 1);
-                    payload.put("firstname", "Default");
-                    payload.put("lastname", "Client");
-                    payload.put("active", true);
-                    payload.put("locale", locale);
-                    payload.put("dateFormat", dateFormat);
-                    payload.put("activationDate", "01 January 2025");
-
-                } else if (endpoint.equals("savingsproducts/template")) {
+                if (endpoint.equals("savingsproducts/template")) {
                     // Process savings product template
                     Sheet sheet = workbook.getSheetAt(0);
                     if (sheet == null) {
@@ -292,7 +377,6 @@ public class FineractApiService {
 
                     // Extract teller data (simplified example)
                     payload.put("name", "Default Teller");
-                    payload.put("officeId", 1);
                     payload.put("description", "Default Teller");
                     payload.put("startDate", "01 January 2025");
                     payload.put("status", 300); // ACTIVE status code
@@ -416,8 +500,7 @@ public class FineractApiService {
                 HttpMethod httpMethod = HttpMethod.POST;
 
                 // Special handling for template endpoints
-                if (endpoint.equals("clients") ||
-                    endpoint.equals("savingsproducts") ||
+                if (endpoint.equals("savingsproducts") ||
                     endpoint.equals("tellers") ||
                     endpoint.equals("roles") ||
                     endpoint.equals("currencies") ||
