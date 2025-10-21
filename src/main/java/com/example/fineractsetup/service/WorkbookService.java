@@ -41,32 +41,63 @@ public class WorkbookService {
             return;
         }
 
-        for (Resource resource : workbooks) {
-            String name = resource.getFilename();
-            logger.info("Processing workbook resource: {}", name);
-            try (InputStream is = resource.getInputStream(); Workbook workbook = WorkbookFactory.create(is)) {
-                SheetType fallbackType = detectTypeFromFilename(name);
-                for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
-                    Sheet sheet = workbook.getSheetAt(i);
-                    if (sheet == null) continue;
-                    String sheetName = sheet.getSheetName();
-                    logger.info("Evaluating sheet '{}' in {}", sheetName, name);
-                    SheetType type = detectSheetType(sheet);
-                    if (type == null) {
-                        type = fallbackType;
-                    }
-                    if (type == null) {
-                        logger.warn("Unrecognized sheet '{}'; skipping", sheetName);
-                        continue;
-                    }
-                    dispatchSheetProcessing(type, sheet);
-                }
-            } catch (Exception e) {
-                logger.error("Failed processing workbook {}: {}", name, e.getMessage(), e);
+        // Prioritize Roles workbook
+        workbooks.sort(Comparator.comparing(r -> {
+            String filename = r.getFilename();
+            if (filename != null && filename.toLowerCase().contains("role")) {
+                return 0;
             }
+            return 1;
+        }));
+
+        for (Resource resource : workbooks) {
+            processWorkbook(resource);
         }
 
         logger.info("Completed workbook-based configuration processing");
+    }
+
+    /**
+     * Processes a single workbook given its classpath path.
+     * @param resourcePath the path to the workbook on the classpath
+     */
+    public void processWorkbook(String resourcePath) {
+        logger.info("Processing workbook from path: {}", resourcePath);
+        Resource resource = resolver.getResource("classpath:" + resourcePath);
+        if (resource.exists()) {
+            processWorkbook(resource);
+        } else {
+            logger.error("Workbook resource not found at path: {}", resourcePath);
+        }
+    }
+
+    /**
+     * Processes a single workbook resource.
+     * @param resource the workbook resource to process
+     */
+    private void processWorkbook(Resource resource) {
+        String name = resource.getFilename();
+        logger.info("Processing workbook resource: {}", name);
+        try (InputStream is = resource.getInputStream(); Workbook workbook = WorkbookFactory.create(is)) {
+            SheetType fallbackType = detectTypeFromFilename(name);
+            for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                Sheet sheet = workbook.getSheetAt(i);
+                if (sheet == null) continue;
+                String sheetName = sheet.getSheetName();
+                logger.info("Evaluating sheet '{}' in {}", sheetName, name);
+                SheetType type = detectSheetType(sheet);
+                if (type == null) {
+                    type = fallbackType;
+                }
+                if (type == null) {
+                    logger.warn("Unrecognized sheet '{}'; skipping", sheetName);
+                    continue;
+                }
+                dispatchSheetProcessing(type, sheet);
+            }
+        } catch (Exception e) {
+            logger.error("Failed processing workbook {}: {}", name, e.getMessage(), e);
+        }
     }
 
     private SheetType detectTypeFromFilename(String filename) {
@@ -134,6 +165,7 @@ public class WorkbookService {
         int firstRow = findFirstNonEmptyRow(sheet);
         Map<String, Integer> headerMap = readHeaderRow(sheet);
         int created = 0;
+        List<String> existingPaymentTypes = fineractApiService.getPaymentTypes();
         if (!headerMap.isEmpty()) {
             int dataStart = firstRow + 1;
             for (int r = dataStart; r <= sheet.getLastRowNum(); r++) {
@@ -141,7 +173,12 @@ public class WorkbookService {
                 if (row == null) continue;
 
                 String name = readStringCell(row, headerMap, Arrays.asList("name", "paymentType", "payment"));
-                if (name == null || name.trim().isEmpty()) continue;
+                if (name == null || name.trim().isEmpty() || existingPaymentTypes.contains(name.trim())) {
+                    if (existingPaymentTypes.contains(name.trim())) {
+                        logger.info("Payment type '{}' already exists, skipping creation", name.trim());
+                    }
+                    continue;
+                }
                 String description = readStringCell(row, headerMap, Arrays.asList("description", "desc"));
                 Boolean isCashPayment = readBooleanCell(row, headerMap, Arrays.asList("isCashPayment", "cash", "isCash"));
                 String position = readStringCell(row, headerMap, Arrays.asList("position", "order", "pos"));
@@ -166,7 +203,12 @@ public class WorkbookService {
                 Row row = sheet.getRow(r);
                 if (row == null) continue;
                 String name = asString(row.getCell(0));
-                if (name == null || name.trim().isEmpty()) continue;
+                if (name == null || name.trim().isEmpty() || existingPaymentTypes.contains(name.trim())) {
+                    if (existingPaymentTypes.contains(name.trim())) {
+                        logger.info("Payment type '{}' already exists, skipping creation", name.trim());
+                    }
+                    continue;
+                }
                 String description = asString(row.getCell(1));
                 String isCashStr = asString(row.getCell(2));
                 String position = asString(row.getCell(3));
@@ -810,9 +852,14 @@ public class WorkbookService {
             payload.put("lastname", lastName.trim());
             
             // Normalize office ID
-            String officeIdStr = headerMap.isEmpty() ? asString(row.getCell(2)) : readStringCell(row, headerMap, Arrays.asList("officeId", "office"));
-            if (officeIdStr != null && !officeIdStr.trim().isEmpty()) {
-                try { payload.put("officeId", Integer.parseInt(officeIdStr.trim())); } catch (NumberFormatException ignore) {}
+            String officeName = readStringCell(row, headerMap, Arrays.asList("officeName", "office"));
+            if (officeName != null && !officeName.trim().isEmpty()) {
+                Integer officeId = fineractApiService.getOfficeId(officeName.trim());
+                if (officeId != null) {
+                    payload.put("officeId", officeId);
+                } else {
+                    logger.warn("Could not find office with name '{}'", officeName.trim());
+                }
             }
             
             // Default to office ID 1 if not specified
@@ -827,7 +874,7 @@ public class WorkbookService {
             
             // Create a minimal payload with only the essential fields
             Map<String, Object> minimalPayload = new HashMap<>();
-            minimalPayload.put("officeId", payload.getOrDefault("officeId", 1));
+            minimalPayload.put("officeId", payload.get("officeId"));
             minimalPayload.put("firstname", firstName.trim());
             minimalPayload.put("lastname", lastName.trim());
             minimalPayload.put("active", true);
@@ -1296,5 +1343,3 @@ public class WorkbookService {
         return null;
     }
 }
-
-
